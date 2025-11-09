@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.enums import UserRole
+from core.enums import EventStatus, NotificationType, UserRole
 from models.event import (
     Event,
     EventCategory,
@@ -11,6 +11,7 @@ from models.event import (
     EventRegistration,
     EventApplication,
 )
+from models.notification import Notification
 from models.room import Room
 from models.user import User
 from schemas.events import (
@@ -102,6 +103,7 @@ async def get_event(*, session: AsyncSession, event_id: UUID) -> EventRecord:
 
 async def update_event(*, session: AsyncSession, event_id: UUID, payload: EventUpdatePayload) -> EventRecord:
     event = await load_entity(session=session, model=Event, entity_id=event_id, entity_label="Event")
+    previous_status = event.status
     update_data = payload.model_dump(exclude_unset=True)
     start_time_candidate = update_data.get("start_time", event.start_time)
     end_time_candidate = update_data.get("end_time", event.end_time)
@@ -128,6 +130,9 @@ async def update_event(*, session: AsyncSession, event_id: UUID, payload: EventU
         await load_entity(session=session, model=Room, entity_id=room_candidate, entity_label="Room")
     for attribute, value in update_data.items():
         setattr(event, attribute, value)
+    should_notify = previous_status != EventStatus.APPROVED and event.status == EventStatus.APPROVED
+    if should_notify:
+        await _queue_new_event_notifications(session=session, event=event)
     await session.commit()
     await session.refresh(event)
     return EventRecord.model_validate(event)
@@ -544,4 +549,40 @@ async def delete_event_application(
     await session.delete(application)
     await session.commit()
     return record
+
+
+async def _queue_new_event_notifications(*, session: AsyncSession, event: Event) -> None:
+    student_ids_result = await session.scalars(select(User.id).where(User.role == UserRole.STUDENT))
+    student_ids = list(student_ids_result)
+    if not student_ids:
+        return
+    notification_message = _build_event_notification_message(event=event)
+    notifications = [
+        Notification(
+            user_id=user_id,
+            type=NotificationType.NEW_EVENT,
+            title=f"Новое мероприятие: {event.title}",
+            message=notification_message,
+            related_event_id=event.id,
+        )
+        for user_id in student_ids
+    ]
+    session.add_all(notifications)
+
+
+def _build_event_notification_message(*, event: Event) -> str:
+    date_text = event.event_date.strftime("%d.%m.%Y")
+    start_time_text = event.start_time.strftime("%H:%M")
+    end_time_text = event.end_time.strftime("%H:%M")
+    base_description = event.description or "Подробности появятся позже."
+    lines = [
+        base_description,
+        f"Дата: {date_text}",
+        f"Время: {start_time_text} - {end_time_text}",
+    ]
+    if event.external_location:
+        lines.append(f"Локация: {event.external_location}")
+    elif event.room_id is not None:
+        lines.append("Локация: уточняется в расписании")
+    return "\n".join(lines)
 
