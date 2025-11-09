@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.enums import EventStatus, NotificationType, UserRole
+from core.enums import EventStatus, ModerationAction, NotificationType, UserRole
 from models.event import (
     Event,
     EventCategory,
@@ -11,6 +11,7 @@ from models.event import (
     EventRegistration,
     EventApplication,
 )
+from models.moderation import EventModerationHistory
 from models.notification import Notification
 from models.room import Room
 from models.user import User
@@ -72,6 +73,7 @@ async def create_event(*, session: AsyncSession, payload: EventCreatePayload) ->
     session.add(event)
     await session.commit()
     await session.refresh(event)
+    await _attach_rejection_comments(session=session, events=[event])
     return EventRecord.model_validate(event)
 
 
@@ -93,11 +95,14 @@ async def list_events(*, session: AsyncSession, params: EventListParams) -> list
         query = query.where(Event.event_date <= params.date_to)
     query = query.offset(params.offset).limit(params.limit)
     result = await session.scalars(query)
-    return [EventRecord.model_validate(item) for item in result]
+    events = list(result)
+    await _attach_rejection_comments(session=session, events=events)
+    return [EventRecord.model_validate(item) for item in events]
 
 
 async def get_event(*, session: AsyncSession, event_id: UUID) -> EventRecord:
     event = await load_entity(session=session, model=Event, entity_id=event_id, entity_label="Event")
+    await _attach_rejection_comments(session=session, events=[event])
     return EventRecord.model_validate(event)
 
 
@@ -135,11 +140,13 @@ async def update_event(*, session: AsyncSession, event_id: UUID, payload: EventU
         await _queue_new_event_notifications(session=session, event=event)
     await session.commit()
     await session.refresh(event)
+    await _attach_rejection_comments(session=session, events=[event])
     return EventRecord.model_validate(event)
 
 
 async def delete_event(*, session: AsyncSession, event_id: UUID) -> EventRecord:
     event = await load_entity(session=session, model=Event, entity_id=event_id, entity_label="Event")
+    await _attach_rejection_comments(session=session, events=[event])
     record = EventRecord.model_validate(event)
     await session.delete(event)
     await session.commit()
@@ -549,6 +556,43 @@ async def delete_event_application(
     await session.delete(application)
     await session.commit()
     return record
+
+
+async def _attach_rejection_comments(*, session: AsyncSession, events: list[Event]) -> None:
+    if not events:
+        return
+    rejected_ids = [event.id for event in events if event.status == EventStatus.REJECTED]
+    comment_map = {}
+    if rejected_ids:
+        comment_map = await _load_rejection_comments(session=session, event_ids=rejected_ids)
+    for event in events:
+        setattr(event, "moderation_comment", comment_map.get(event.id))
+
+
+async def _load_rejection_comments(
+    *,
+    session: AsyncSession,
+    event_ids: list[UUID],
+) -> dict[UUID, str | None]:
+    if not event_ids:
+        return {}
+    query = (
+        select(
+            EventModerationHistory.event_id,
+            EventModerationHistory.comment,
+            EventModerationHistory.created_at,
+        )
+        .where(EventModerationHistory.event_id.in_(event_ids))
+        .where(EventModerationHistory.action == ModerationAction.REJECT)
+        .order_by(EventModerationHistory.event_id, EventModerationHistory.created_at.desc())
+    )
+    rows = await session.execute(query)
+    comments: dict[UUID, str | None] = {}
+    for event_id, comment, _created_at in rows.all():
+        if event_id in comments:
+            continue
+        comments[event_id] = comment
+    return comments
 
 
 async def _queue_new_event_notifications(*, session: AsyncSession, event: Event) -> None:

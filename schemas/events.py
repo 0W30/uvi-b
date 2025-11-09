@@ -73,6 +73,7 @@ class EventRecord(BaseModel):
     need_approve_candidates: bool
     created_at: datetime.datetime
     updated_at: datetime.datetime | None
+    moderation_comment: str | None = None
 
 
 class EventCategoryCreatePayload(BaseModel):
