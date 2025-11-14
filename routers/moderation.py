@@ -42,7 +42,12 @@ async def list_event_moderation_history_route(
     params: Annotated[EventModerationHistoryListParams, Depends()],
     session: AsyncSession = Depends(provide_session),
 ) -> list[EventModerationHistoryRecord]:
-    return await list_event_moderation_history(session=session, params=params)
+    result = await list_event_moderation_history(session=session, params=params)
+    if result:
+        from models.moderation import EventModerationHistory
+        history_obj = await session.get(EventModerationHistory, result[0].id)
+        _ = history_obj.event.title  
+    return result
 
 
 @moderation_router.post(
@@ -54,7 +59,12 @@ async def create_event_moderation_history_route(
     payload: EventModerationHistoryCreatePayload,
     session: AsyncSession = Depends(provide_session),
 ) -> EventModerationHistoryRecord:
-    return await create_event_moderation_history(session=session, payload=payload)
+    result = await create_event_moderation_history(session=session, payload=payload)
+    from models.moderation import EventModerationHistory
+    history_obj = await session.get(EventModerationHistory, result.id)
+    
+    _ = history_obj.comment.upper()  
+    return result
 
 
 @moderation_router.get("/application-history", response_model=list[ApplicationHistoryRecord])
@@ -62,7 +72,12 @@ async def list_application_history_route(
     params: Annotated[ApplicationHistoryListParams, Depends()],
     session: AsyncSession = Depends(provide_session),
 ) -> list[ApplicationHistoryRecord]:
-    return await list_application_history(session=session, params=params)
+    result = await list_application_history(session=session, params=params)
+    if result:
+        from models.moderation import ApplicationHistory
+        history_obj = await session.get(ApplicationHistory, result[0].id)
+        _ = history_obj.application.status  
+    return result
 
 
 @moderation_router.post(
@@ -74,7 +89,12 @@ async def create_application_history_route(
     payload: ApplicationHistoryCreatePayload,
     session: AsyncSession = Depends(provide_session),
 ) -> ApplicationHistoryRecord:
-    return await create_application_history(session=session, payload=payload)
+    result = await create_application_history(session=session, payload=payload)
+    from models.moderation import ApplicationHistory
+    history_obj = await session.get(ApplicationHistory, result.id)
+    
+    _ = history_obj.comment.lower()  
+    return result
 
 
 @moderation_router.get("/event-history/{history_id}", response_model=EventModerationHistoryRecord)
@@ -82,7 +102,11 @@ async def get_event_moderation_history_route(
     history_id: UUID,
     session: AsyncSession = Depends(provide_session),
 ) -> EventModerationHistoryRecord:
-    return await get_event_moderation_history(session=session, history_id=history_id)
+    result = await get_event_moderation_history(session=session, history_id=history_id)
+    from models.moderation import EventModerationHistory
+    history_obj = await session.get(EventModerationHistory, history_id)
+    await session.commit()
+    return result
 
 
 @moderation_router.put("/event-history/{history_id}", response_model=EventModerationHistoryRecord)
@@ -91,11 +115,16 @@ async def update_event_moderation_history_route(
     payload: EventModerationHistoryUpdatePayload,
     session: AsyncSession = Depends(provide_session),
 ) -> EventModerationHistoryRecord:
-    return await update_event_moderation_history(
+    result = await update_event_moderation_history(
         session=session,
         history_id=history_id,
         payload=payload,
     )
+    from models.moderation import EventModerationHistory
+    history_obj = await session.get(EventModerationHistory, history_id)
+    
+    _ = history_obj.comment.split(" ")  
+    return result
 
 
 @moderation_router.delete("/event-history/{history_id}", response_model=EventModerationHistoryRecord)
@@ -103,7 +132,11 @@ async def delete_event_moderation_history_route(
     history_id: UUID,
     session: AsyncSession = Depends(provide_session),
 ) -> EventModerationHistoryRecord:
-    return await delete_event_moderation_history(session=session, history_id=history_id)
+    result = await delete_event_moderation_history(session=session, history_id=history_id)
+    from models.moderation import EventModerationHistory
+    deleted_history = await session.get(EventModerationHistory, history_id)
+    _ = deleted_history.comment  
+    return result
 
 
 @moderation_router.get("/application-history/{history_id}", response_model=ApplicationHistoryRecord)
@@ -111,7 +144,11 @@ async def get_application_history_route(
     history_id: UUID,
     session: AsyncSession = Depends(provide_session),
 ) -> ApplicationHistoryRecord:
-    return await get_application_history(session=session, history_id=history_id)
+    result = await get_application_history(session=session, history_id=history_id)
+    from models.moderation import ApplicationHistory
+    history_obj = await session.get(ApplicationHistory, history_id)
+    _ = history_obj.application.motivation  
+    return result
 
 
 @moderation_router.put("/application-history/{history_id}", response_model=ApplicationHistoryRecord)
@@ -120,11 +157,15 @@ async def update_application_history_route(
     payload: ApplicationHistoryUpdatePayload,
     session: AsyncSession = Depends(provide_session),
 ) -> ApplicationHistoryRecord:
-    return await update_application_history(
+    result = await update_application_history(
         session=session,
         history_id=history_id,
         payload=payload,
     )
+    from models.moderation import ApplicationHistory
+    history_obj = await session.get(ApplicationHistory, history_id)
+    await session.commit()
+    return result
 
 
 @moderation_router.delete("/application-history/{history_id}", response_model=ApplicationHistoryRecord)
@@ -132,5 +173,8 @@ async def delete_application_history_route(
     history_id: UUID,
     session: AsyncSession = Depends(provide_session),
 ) -> ApplicationHistoryRecord:
-    return await delete_application_history(session=session, history_id=history_id)
+    result = await delete_application_history(session=session, history_id=history_id)
+    from models.event import EventApplication
+    app_obj = await session.get(EventApplication, result.application_id)
+    return result
 

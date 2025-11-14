@@ -1,13 +1,15 @@
 
 
-
-
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 
+from core.config import settings
 from routers import (
     auth_router,
     events_router,
@@ -22,6 +24,22 @@ from services.exceptions import (
     InvalidStateError,
     ServiceError,
 )
+
+# Инициализация Sentry
+if settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.sentry_environment,
+        traces_sample_rate=settings.sentry_traces_sample_rate,
+        integrations=[
+            FastApiIntegration(transaction_style="endpoint"),
+            SqlalchemyIntegration(),
+        ],
+        # Отключаем Sentry в режиме отладки, если нужно
+        debug=settings.debug,
+        # Настройки для production
+        send_default_pii=False,  # Не отправлять персональные данные по умолчанию
+    )
 
 
 app = FastAPI()
@@ -71,9 +89,31 @@ async def service_error_handler(_: Request, exc: ServiceError) -> JSONResponse:
         status_code = status.HTTP_409_CONFLICT
     elif isinstance(exc, InvalidStateError):
         status_code = status.HTTP_400_BAD_REQUEST
+    
+    # Отправляем в Sentry только ошибки сервера (5xx), не клиентские ошибки (4xx)
+    if status_code >= 500:
+        sentry_sdk.capture_exception(exc)
+    
     return JSONResponse(
         content={"detail": exc.detail},
         status_code=status_code,
+    )
+
+
+@app.exception_handler(Exception)
+async def general_exception_handler(_: Request, exc: Exception) -> JSONResponse:
+    # Отправляем все необработанные исключения в Sentry
+    sentry_sdk.capture_exception(exc)
+    
+    # В production не показываем детали ошибки клиенту
+    if settings.debug:
+        detail = str(exc)
+    else:
+        detail = "Internal server error"
+    
+    return JSONResponse(
+        content={"detail": detail},
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
     )
 
 

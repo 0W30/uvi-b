@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     
     debug: bool = True
+    
+    sentry_dsn: str = ""
+    sentry_environment: str = "development"
+    sentry_traces_sample_rate: float = 1.0
 
     @property
     def database_url(self) -> str:

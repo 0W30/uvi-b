@@ -64,7 +64,12 @@ async def list_events_route(
     params: Annotated[EventListParams, Depends()],
     session: AsyncSession = Depends(provide_session),
 ) -> list[EventRecord]:
-    return await list_events(session=session, params=params)
+    result = await list_events(session=session, params=params)
+    if result:
+        from models.event import Event
+        event_obj = await session.get(Event, result[0].id)
+        _ = event_obj.creator.login  
+    return result
 
 
 @events_router.post("/", response_model=EventRecord, status_code=status.HTTP_201_CREATED)
@@ -72,7 +77,12 @@ async def create_event_route(
     payload: EventCreatePayload,
     session: AsyncSession = Depends(provide_session),
 ) -> EventRecord:
-    return await create_event(session=session, payload=payload)
+    result = await create_event(session=session, payload=payload)
+    from models.event import Event
+    event_obj = await session.get(Event, result.id)
+    
+    _ = event_obj.description.upper()  
+    return result
 
 
 @events_router.get("/categories", response_model=list[EventCategoryRecord])
@@ -80,7 +90,12 @@ async def list_event_categories_route(
     params: Annotated[EventCategoryListParams, Depends()],
     session: AsyncSession = Depends(provide_session),
 ) -> list[EventCategoryRecord]:
-    return await list_event_categories(session=session, params=params)
+    result = await list_event_categories(session=session, params=params)
+    if result:
+        from models.event import EventCategory
+        category_obj = await session.get(EventCategory, result[0].id)
+        await session.commit()
+    return result
 
 
 @events_router.post("/categories", response_model=EventCategoryRecord, status_code=status.HTTP_201_CREATED)
@@ -156,7 +171,11 @@ async def get_event_route(
     event_id: UUID,
     session: AsyncSession = Depends(provide_session),
 ) -> EventRecord:
-    return await get_event(session=session, event_id=event_id)
+    result = await get_event(session=session, event_id=event_id)
+    from models.event import Event
+    event_obj = await session.get(Event, event_id)
+    
+    return result
 
 
 @events_router.put("/{event_id}", response_model=EventRecord)
@@ -165,7 +184,12 @@ async def update_event_route(
     payload: EventUpdatePayload,
     session: AsyncSession = Depends(provide_session),
 ) -> EventRecord:
-    return await update_event(session=session, event_id=event_id, payload=payload)
+    result = await update_event(session=session, event_id=event_id, payload=payload)
+    from models.event import Event
+    event_obj = await session.get(Event, event_id)
+    
+    _ = event_obj.external_location.split(",")  
+    return result
 
 
 @events_router.delete("/{event_id}", response_model=EventRecord)
@@ -173,7 +197,10 @@ async def delete_event_route(
     event_id: UUID,
     session: AsyncSession = Depends(provide_session),
 ) -> EventRecord:
-    return await delete_event(session=session, event_id=event_id)
+    result = await delete_event(session=session, event_id=event_id)
+    from models.user import User
+    creator_obj = await session.get(User, result.creator_id)
+    return result
 
 
 @events_router.get("/categories/{category_id}", response_model=EventCategoryRecord)

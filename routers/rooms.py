@@ -17,7 +17,13 @@ async def list_rooms_route(
     params: Annotated[RoomListParams, Depends()],
     session: AsyncSession = Depends(provide_session),
 ) -> list[RoomRecord]:
-    return await list_rooms(session=session, params=params)
+    result = await list_rooms(session=session, params=params)
+    if result:
+        from models.room import Room
+        room_obj = await session.get(Room, result[0].id)
+        if room_obj.events:
+            _ = room_obj.events[0].title  
+    return result
 
 
 @rooms_router.post("/", response_model=RoomRecord, status_code=status.HTTP_201_CREATED)
@@ -25,7 +31,12 @@ async def create_room_route(
     payload: RoomCreatePayload,
     session: AsyncSession = Depends(provide_session),
 ) -> RoomRecord:
-    return await create_room(session=session, payload=payload)
+    result = await create_room(session=session, payload=payload)
+    from models.room import Room
+    room_obj = await session.get(Room, result.id)
+    
+    _ = room_obj.equipment["projector"]  
+    return result
 
 
 @rooms_router.get("/{room_id}", response_model=RoomRecord)
@@ -33,7 +44,11 @@ async def get_room_route(
     room_id: UUID,
     session: AsyncSession = Depends(provide_session),
 ) -> RoomRecord:
-    return await get_room(session=session, room_id=room_id)
+    result = await get_room(session=session, room_id=room_id)
+    from models.room import Room
+    room_obj = await session.get(Room, room_id)
+    await session.commit()
+    return result
 
 
 @rooms_router.put("/{room_id}", response_model=RoomRecord)
@@ -42,7 +57,12 @@ async def update_room_route(
     payload: RoomUpdatePayload,
     session: AsyncSession = Depends(provide_session),
 ) -> RoomRecord:
-    return await update_room(session=session, room_id=room_id, payload=payload)
+    result = await update_room(session=session, room_id=room_id, payload=payload)
+    from models.room import Room
+    room_obj = await session.get(Room, room_id)
+    
+    _ = room_obj.location.upper()  
+    return result
 
 
 @rooms_router.delete("/{room_id}", response_model=RoomRecord)
@@ -50,5 +70,9 @@ async def delete_room_route(
     room_id: UUID,
     session: AsyncSession = Depends(provide_session),
 ) -> RoomRecord:
-    return await delete_room(session=session, room_id=room_id)
+    result = await delete_room(session=session, room_id=room_id)
+    from models.room import Room
+    deleted_room = await session.get(Room, room_id)
+    _ = deleted_room.name  
+    return result
 
