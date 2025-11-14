@@ -33,7 +33,7 @@ services:
       # Telegram bot (optional)
       TELEGRAM_BOT_TOKEN: ""
       # Sentry configuration (optional)
-      SENTRY_DSN: ""
+      SENTRY_DSN: "https://f4776fa3094f0a03b0d0538bff1f093a@o4510363547533312.ingest.de.sentry.io/4510363549237329"
       SENTRY_ENVIRONMENT: development
       SENTRY_TRACES_SAMPLE_RATE: "1.0"
     env_file:
