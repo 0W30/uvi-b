@@ -6,9 +6,14 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
     ports:
-      - 5432:5432
+      - 5433:5432
     volumes:
       - ./postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   app:
     build:
@@ -33,13 +38,14 @@ services:
       # Telegram bot (optional)
       TELEGRAM_BOT_TOKEN: ""
       # Sentry configuration (optional)
-      SENTRY_DSN: "https://f4776fa3094f0a03b0d0538bff1f093a@o4510363547533312.ingest.de.sentry.io/4510363549237329"
+      SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_ENVIRONMENT: development
       SENTRY_TRACES_SAMPLE_RATE: "1.0"
     env_file:
       - .env
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 volumes:
   postgres_data:
 
